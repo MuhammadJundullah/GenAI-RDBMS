@@ -121,7 +121,7 @@ Payload JWT sekarang mencakup peran pengguna:
   "id": "user_id",
   "email": "user@example.com",
   "name": "User Name",
-  "role": "user" | "admin", // New: User's role
+  "role": "user" | "admin",
   "iat": 1234567890,
   "exp": 1234567890
 }
