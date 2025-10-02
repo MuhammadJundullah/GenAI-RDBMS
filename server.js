@@ -1,6 +1,7 @@
 // server.js
 require('dotenv').config();
 
+const morgan = require("morgan");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -14,11 +15,16 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+// log
+app.use(morgan("dev")); 
+
 // Routes
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/connections", require("./routes/connections"));
-app.use("/api/query", require("./routes/query"));
-app.use("/api/schema", require("./routes/schema"));
+app.use("/api/auth", require("./routes/user/auth"));
+app.use("/api/connections", require("./routes/user/connections"));
+app.use("/api/query", require("./routes/user/query"));
+app.use("/api/schema", require("./routes/user/schema"));
+app.use("/api/admin", require("./routes/admin/users")); // Admin user management routes
+app.use("/api/admin", require("./routes/admin/audit")); // Admin audit logs routes
 
 // Health check
 app.get('/health', (req, res) => {

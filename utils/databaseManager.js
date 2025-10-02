@@ -11,7 +11,7 @@ class DatabaseManager {
   async testConnection(dbConfig) {
     try {
       switch (dbConfig.type) {
-        case 'postgres':
+        case "postgres":
           const pgPool = new Pool({
             host: dbConfig.host,
             port: dbConfig.port,
@@ -21,14 +21,23 @@ class DatabaseManager {
             max: 1,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 10000,
+            ssl: dbConfig.ssl,
           });
+
+          // Jika menggunakan connection string, tambahkan sslmode
+          if (dbConfig.connectionString) {
+            if (!dbConfig.connectionString.includes("sslmode")) {
+              pgConfig.connectionString = `${dbConfig.connectionString}?sslmode=require`;
+            }
+          }
+
           const client = await pgPool.connect();
-          await client.query('SELECT 1');
+          await client.query("SELECT 1");
           client.release();
           await pgPool.end();
           return { success: true };
 
-        case 'mysql':
+        case "mysql":
           const mysqlConn = await mysql.createConnection({
             host: dbConfig.host,
             port: dbConfig.port,
@@ -36,24 +45,27 @@ class DatabaseManager {
             user: dbConfig.username,
             password: dbConfig.password,
           });
-          await mysqlConn.execute('SELECT 1');
+          await mysqlConn.execute("SELECT 1");
           await mysqlConn.end();
           return { success: true };
 
-        case 'sqlite':
+        case "sqlite":
           return new Promise((resolve, reject) => {
-            const db = new sqlite3.Database(dbConfig.filePath || dbConfig.file_path, (err) => {
-              if (err) {
-                reject({ success: false, error: err.message });
-              } else {
-                db.close();
-                resolve({ success: true });
+            const db = new sqlite3.Database(
+              dbConfig.filePath || dbConfig.file_path,
+              (err) => {
+                if (err) {
+                  reject({ success: false, error: err.message });
+                } else {
+                  db.close();
+                  resolve({ success: true });
+                }
               }
-            });
+            );
           });
 
         default:
-          return { success: false, error: 'Unsupported database type' };
+          return { success: false, error: "Unsupported database type" };
       }
     } catch (error) {
       return { success: false, error: error.message };
@@ -63,24 +75,35 @@ class DatabaseManager {
   async executeQuery(dbConfig, query) {
     try {
       switch (dbConfig.type) {
-        case 'postgres':
-          const pgPool = new Pool({
+        case "postgres":
+          const pgConfig = {
             host: dbConfig.host,
             port: dbConfig.port,
             database: dbConfig.database,
             user: dbConfig.username,
             password: dbConfig.password,
+            ssl: dbConfig.ssl || false,
+          };
+
+          console.log("PostgreSQL Config:", {
+            host: pgConfig.host,
+            database: pgConfig.database,
+            user: pgConfig.user,
+            ssl: pgConfig.ssl,
           });
+
+          const pgPool = new Pool(pgConfig);
           const result = await pgPool.query(query);
           await pgPool.end();
+
           return {
             success: true,
             data: result.rows,
-            columns: result.fields?.map(field => field.name) || [],
-            rowCount: result.rowCount
+            columns: result.fields?.map((field) => field.name) || [],
+            rowCount: result.rowCount,
           };
 
-        case 'mysql':
+        case "mysql":
           const mysqlConn = await mysql.createConnection({
             host: dbConfig.host,
             port: dbConfig.port,
@@ -93,13 +116,13 @@ class DatabaseManager {
           return {
             success: true,
             data: rows,
-            columns: fields?.map(field => field.name) || [],
-            rowCount: rows.length
+            columns: fields?.map((field) => field.name) || [],
+            rowCount: rows.length,
           };
 
-        case 'sqlite':
+        case "sqlite":
           return new Promise((resolve, reject) => {
-            const db = new sqlite3.Database(dbConfig.filePath || dbConfig.file_path);
+            const db = new sqlite3.Database(dbConfig.filePath);
             db.all(query, (err, rows) => {
               if (err) {
                 reject({ success: false, error: err.message });
@@ -108,7 +131,7 @@ class DatabaseManager {
                   success: true,
                   data: rows,
                   columns: rows.length > 0 ? Object.keys(rows[0]) : [],
-                  rowCount: rows.length
+                  rowCount: rows.length,
                 });
               }
               db.close();
@@ -116,9 +139,10 @@ class DatabaseManager {
           });
 
         default:
-          return { success: false, error: 'Unsupported database type' };
+          return { success: false, error: "Unsupported database type" };
       }
     } catch (error) {
+      console.error("Query Execution Error:", error);
       return { success: false, error: error.message };
     }
   }
@@ -126,25 +150,25 @@ class DatabaseManager {
   async getSchema(dbConfig) {
     try {
       switch (dbConfig.type) {
-        case 'postgres':
+        case "postgres":
           return await this.getPostgresSchema(dbConfig);
-        case 'mysql':
+        case "mysql":
           return await this.getMySQLSchema(dbConfig);
-        case 'sqlite':
+        case "sqlite":
           return await this.getSQLiteSchema(dbConfig);
         default:
           return {
             database_type: dbConfig.type,
-            tables: []
+            tables: [],
           };
       }
     } catch (error) {
-      console.error('Schema extraction error:', error);
+      console.error("Schema extraction error:", error);
       // Return minimal schema jika gagal
       return {
         database_type: dbConfig.type,
         error: error.message,
-        tables: []
+        tables: [],
       };
     }
   }
@@ -156,6 +180,7 @@ class DatabaseManager {
       database: dbConfig.database,
       user: dbConfig.username,
       password: dbConfig.password,
+      ssl: dbConfig.ssl || false,
     });
 
     try {
@@ -182,25 +207,25 @@ class DatabaseManager {
       const result = await pool.query(query);
       const tables = {};
 
-      result.rows.forEach(row => {
+      result.rows.forEach((row) => {
         if (!tables[row.table_name]) {
           tables[row.table_name] = {
-            columns: []
+            columns: [],
           };
         }
         tables[row.table_name].columns.push({
           name: row.column_name,
           type: row.data_type,
-          nullable: row.is_nullable === 'YES',
+          nullable: row.is_nullable === "YES",
           default: row.column_default,
-          constraint: row.constraint_type
+          constraint: row.constraint_type,
         });
       });
 
       return {
-        database_type: 'postgres',
+        database_type: "postgres",
         database_name: dbConfig.database,
-        tables: tables
+        tables: tables,
       };
     } finally {
       await pool.end();
@@ -217,7 +242,8 @@ class DatabaseManager {
     });
 
     try {
-      const [rows] = await conn.execute(`
+      const [rows] = await conn.execute(
+        `
         SELECT 
           TABLE_NAME,
           COLUMN_NAME,
@@ -228,26 +254,28 @@ class DatabaseManager {
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = ?
         ORDER BY TABLE_NAME, ORDINAL_POSITION
-      `, [dbConfig.database]);
+      `,
+        [dbConfig.database]
+      );
 
       const tables = {};
-      rows.forEach(row => {
+      rows.forEach((row) => {
         if (!tables[row.TABLE_NAME]) {
           tables[row.TABLE_NAME] = { columns: [] };
         }
         tables[row.TABLE_NAME].columns.push({
           name: row.COLUMN_NAME,
           type: row.DATA_TYPE,
-          nullable: row.IS_NULLABLE === 'YES',
+          nullable: row.IS_NULLABLE === "YES",
           default: row.COLUMN_DEFAULT,
-          key: row.COLUMN_KEY
+          key: row.COLUMN_KEY,
         });
       });
 
       return {
-        database_type: 'mysql',
+        database_type: "mysql",
         database_name: dbConfig.database,
-        tables: tables
+        tables: tables,
       };
     } finally {
       await conn.end();
@@ -257,45 +285,48 @@ class DatabaseManager {
   async getSQLiteSchema(dbConfig) {
     return new Promise((resolve, reject) => {
       const db = new sqlite3.Database(dbConfig.filePath || dbConfig.file_path);
-      
-      db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", (err, tables) => {
-        if (err) {
-          db.close();
-          reject(err);
-          return;
-        }
 
-        const schema = { database_type: 'sqlite', tables: {} };
-        let completed = 0;
+      db.all(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        (err, tables) => {
+          if (err) {
+            db.close();
+            reject(err);
+            return;
+          }
 
-        if (tables.length === 0) {
-          db.close();
-          resolve(schema);
-          return;
-        }
+          const schema = { database_type: "sqlite", tables: {} };
+          let completed = 0;
 
-        tables.forEach(table => {
-          db.all(`PRAGMA table_info(${table.name})`, (err, columns) => {
-            if (!err) {
-              schema.tables[table.name] = {
-                columns: columns.map(col => ({
-                  name: col.name,
-                  type: col.type,
-                  nullable: col.notnull === 0,
-                  default: col.dflt_value,
-                  primary_key: col.pk === 1
-                }))
-              };
-            }
+          if (tables.length === 0) {
+            db.close();
+            resolve(schema);
+            return;
+          }
 
-            completed++;
-            if (completed === tables.length) {
-              db.close();
-              resolve(schema);
-            }
+          tables.forEach((table) => {
+            db.all(`PRAGMA table_info(${table.name})`, (err, columns) => {
+              if (!err) {
+                schema.tables[table.name] = {
+                  columns: columns.map((col) => ({
+                    name: col.name,
+                    type: col.type,
+                    nullable: col.notnull === 0,
+                    default: col.dflt_value,
+                    primary_key: col.pk === 1,
+                  })),
+                };
+              }
+
+              completed++;
+              if (completed === tables.length) {
+                db.close();
+                resolve(schema);
+              }
+            });
           });
-        });
-      });
+        }
+      );
     });
   }
 }

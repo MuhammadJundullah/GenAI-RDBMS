@@ -3,12 +3,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { body, validationResult } = require("express-validator");
 const router = express.Router();
-
-// Database pool (gunakan yang sesuai dengan database Anda)
-const { Pool } = require("pg");
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+const User = require("../../models/User"); // Import the User model
+const audit = require("../../middleware/auditMiddleware"); // Import audit middleware
 
 // Middleware untuk verifikasi JWT
 const authenticateToken = (req, res, next) => {
@@ -19,11 +15,16 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ error: "Access token required" });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET, async (err, user) => {
     if (err) {
       return res.status(403).json({ error: "Invalid or expired token" });
     }
-    req.user = user;
+    // Fetch user from DB to get the latest role and other info
+    const fullUser = await User.findById(user.id);
+    if (!fullUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    req.user = fullUser; // Attach full user object including role
     next();
   });
 };
@@ -36,6 +37,7 @@ router.post(
     body("password").isLength({ min: 6 }),
     body("name").notEmpty().trim(),
   ],
+  audit("register", "user", null, (req) => ({ email: req.body.email })),
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -46,12 +48,8 @@ router.post(
       const { email, password, name } = req.body;
 
       // Check if user already exists
-      const existingUser = await pool.query(
-        "SELECT id FROM users WHERE email = $1",
-        [email]
-      );
-
-      if (existingUser.rows.length > 0) {
+      const existingUser = await User.findByEmail(email);
+      if (existingUser) {
         return res.status(409).json({ error: "User already exists" });
       }
 
@@ -59,15 +57,8 @@ router.post(
       const saltRounds = parseInt(process.env.BCRYPT_ROUNDS) || 12;
       const passwordHash = await bcrypt.hash(password, saltRounds);
 
-      // Create user
-      const result = await pool.query(
-        `INSERT INTO users (email, password_hash, name) 
-       VALUES ($1, $2, $3) 
-       RETURNING id, email, name, created_at`,
-        [email, passwordHash, name]
-      );
-
-      const user = result.rows[0];
+      // Create user (default role is 'user')
+      const user = await User.create(email, passwordHash, name, 'user');
 
       // Generate JWT token
       const token = jwt.sign(
@@ -75,6 +66,7 @@ router.post(
           id: user.id,
           email: user.email,
           name: user.name,
+          role: user.role, // Include role in JWT
         },
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
@@ -86,6 +78,7 @@ router.post(
           id: user.id,
           email: user.email,
           name: user.name,
+          role: user.role,
         },
         token,
       });
@@ -99,7 +92,11 @@ router.post(
 // Login user
 router.post(
   "/login",
-  [body("email").isEmail().normalizeEmail(), body("password").notEmpty()],
+  [
+    body("email").isEmail().normalizeEmail(),
+    body("password").notEmpty(),
+  ],
+  audit("login", "user", (req, res, body) => body.user ? body.user.id : null, (req) => ({ email: req.body.email })),
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -110,16 +107,10 @@ router.post(
       const { email, password } = req.body;
 
       // Find user
-      const result = await pool.query(
-        "SELECT id, email, password_hash, name FROM users WHERE email = $1",
-        [email]
-      );
-
-      if (result.rows.length === 0) {
+      const user = await User.findByEmail(email);
+      if (!user) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
-
-      const user = result.rows[0];
 
       // Verify password
       const isValidPassword = await bcrypt.compare(
@@ -136,6 +127,7 @@ router.post(
           id: user.id,
           email: user.email,
           name: user.name,
+          role: user.role, // Include role in JWT
         },
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
@@ -147,6 +139,7 @@ router.post(
           id: user.id,
           email: user.email,
           name: user.name,
+          role: user.role,
         },
         token,
       });
@@ -160,16 +153,14 @@ router.post(
 // Get current user profile
 router.get("/me", authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT id, email, name, created_at FROM users WHERE id = $1",
-      [req.user.id]
-    );
-
-    if (result.rows.length === 0) {
+    // req.user is already populated by authenticateToken with full user object
+    const user = req.user;
+    if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-
-    res.json({ user: result.rows[0] });
+    // Remove sensitive data before sending
+    const { password_hash, ...userWithoutHash } = user;
+    res.json({ user: userWithoutHash });
   } catch (error) {
     console.error("Get profile error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -184,6 +175,7 @@ router.put(
     body("name").optional().notEmpty().trim(),
     body("email").optional().isEmail().normalizeEmail(),
   ],
+  audit("update_profile", "user", (req) => req.user.id, (req) => ({ updatedFields: Object.keys(req.body) })),
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -192,48 +184,33 @@ router.put(
       }
 
       const { name, email } = req.body;
-      const updateFields = [];
-      const values = [];
-      let paramCount = 1;
+      const userId = req.user.id;
+      const updates = {};
 
       if (name) {
-        updateFields.push(`name = $${paramCount}`);
-        values.push(name);
-        paramCount++;
+        updates.name = name;
       }
-
       if (email) {
-        // Check if email already exists (for other users)
-        const existingUser = await pool.query(
-          "SELECT id FROM users WHERE email = $1 AND id != $2",
-          [email, req.user.id]
-        );
-
-        if (existingUser.rows.length > 0) {
+        // Check if email already exists for another user
+        const existingUser = await User.findByEmail(email);
+        if (existingUser && existingUser.id !== userId) {
           return res.status(409).json({ error: "Email already exists" });
         }
-
-        updateFields.push(`email = $${paramCount}`);
-        values.push(email);
-        paramCount++;
+        updates.email = email;
       }
 
-      if (updateFields.length === 0) {
+      if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: "No fields to update" });
       }
 
-      updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
-      values.push(req.user.id);
+      const updatedUser = await User.update(userId, updates);
+      if (!updatedUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
 
-      const query = `
-      UPDATE users 
-      SET ${updateFields.join(", ")} 
-      WHERE id = $${paramCount} 
-      RETURNING id, email, name, created_at, updated_at
-    `;
-
-      const result = await pool.query(query, values);
-      res.json({ user: result.rows[0] });
+      // Remove sensitive data before sending
+      const { password_hash, ...userWithoutHash } = updatedUser;
+      res.json({ user: userWithoutHash });
     } catch (error) {
       console.error("Update profile error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -249,6 +226,7 @@ router.put(
     body("currentPassword").notEmpty(),
     body("newPassword").isLength({ min: 6 }),
   ],
+  audit("change_password", "user", (req) => req.user.id),
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -257,23 +235,18 @@ router.put(
       }
 
       const { currentPassword, newPassword } = req.body;
+      const userId = req.user.id;
 
       // Get current password hash
-      const userResult = await pool.query(
-        "SELECT password_hash FROM users WHERE id = $1",
-        [req.user.id]
-      );
-
-      if (userResult.rows.length === 0) {
+      const user = await User.findById(userId);
+      if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-
-      const currentPasswordHash = userResult.rows[0].password_hash;
 
       // Verify current password
       const isValidPassword = await bcrypt.compare(
         currentPassword,
-        currentPasswordHash
+        user.password_hash
       );
       if (!isValidPassword) {
         return res.status(401).json({ error: "Current password is incorrect" });
@@ -284,10 +257,7 @@ router.put(
       const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
 
       // Update password
-      await pool.query(
-        "UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
-        [newPasswordHash, req.user.id]
-      );
+      await User.updatePassword(userId, newPasswordHash);
 
       res.json({ message: "Password updated successfully" });
     } catch (error) {
