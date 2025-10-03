@@ -22,8 +22,9 @@ router.post(
     body("email").isEmail().normalizeEmail(),
     body("password").isLength({ min: 6 }),
     body("name").notEmpty().trim(),
-    body("role").optional().isIn(['user', 'admin']),
+    body("role").optional().isIn(["user", "admin"]),
   ],
+
   async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

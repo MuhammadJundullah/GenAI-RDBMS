@@ -1022,6 +1022,41 @@ Base path: `/api/admin`
 
 **Authentication:** Required (Bearer Token) & **Admin Role Required**
 
+### Admin Account Management
+
+The application distinguishes between regular `user` roles and `admin` roles. Admins have extended privileges to manage users and monitor the system.
+
+#### Creating the First Admin
+
+To create the first administrator, you must manually assign the 'admin' role to a user directly in the database after they have registered through the standard registration process.
+
+1.  **Register a user** via the `POST /api/auth/register` endpoint.
+2.  **Connect to your application's PostgreSQL database.**
+3.  **Run the following SQL command:**
+    ```sql
+    UPDATE users SET role = 'admin' WHERE email = 'your-email@example.com';
+    ```
+4.  The user with that email will now have admin privileges upon their next login.
+
+#### Creating Additional Admins
+
+Once you have an admin account, you can create other admin or user accounts through the API.
+
+-   **Endpoint:** `POST /api/admin/users`
+-   **Authentication:** Requires a Bearer Token from a logged-in admin.
+-   **Request Body:** To create an admin, send a request with the `role` field set to `admin`.
+
+    ```json
+    {
+      "email": "new-admin@example.com",
+      "password": "strongpassword123",
+      "name": "New Admin",
+      "role": "admin"
+    }
+    ```
+
+Existing admins can also update user roles or delete users through the provided admin endpoints.
+
 #### User Management (Admin)
 
 ##### 1. Get All Users

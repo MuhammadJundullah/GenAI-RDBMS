@@ -1,5 +1,4 @@
-// server.js
-require('dotenv').config();
+require("dotenv").config();
 
 const morgan = require("morgan");
 const express = require("express");
@@ -16,27 +15,27 @@ app.use(cors());
 app.use(express.json());
 
 // log
-app.use(morgan("dev")); 
+app.use(morgan("dev"));
 
 // Routes
 app.use("/api/auth", require("./routes/user/auth"));
 app.use("/api/connections", require("./routes/user/connections"));
 app.use("/api/query", require("./routes/user/query"));
 app.use("/api/schema", require("./routes/user/schema"));
-app.use("/api/admin", require("./routes/admin/users")); // Admin user management routes
-app.use("/api/admin", require("./routes/admin/audit")); // Admin audit logs routes
+app.use("/api/admin", require("./routes/admin/users"));
+app.use("/api/admin", require("./routes/admin/audit"));
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+app.get("/health", (req, res) => {
+  res.json({
+    status: "OK",
     timestamp: new Date().toISOString(),
-    service: 'GenAI RDBMS Backend'
+    service: "GenAI RDBMS Backend",
   });
 });
 
-// ✅ Test Gemini API connection
-app.get('/api/test-gemini', async (req, res) => {
+// Test Gemini API connection
+app.get("/api/test-gemini", async (req, res) => {
   try {
     const geminiService = require("./services/geminiService");
     const result = await geminiService.testConnection();
@@ -44,13 +43,13 @@ app.get('/api/test-gemini', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
 
-// ✅ List available Gemini models
-app.get('/api/gemini-models', async (req, res) => {
+// List available Gemini models
+app.get("/api/gemini-models", async (req, res) => {
   try {
     const geminiService = require("./services/geminiService");
     const result = await geminiService.listAvailableModels();
@@ -58,7 +57,7 @@ app.get('/api/gemini-models', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -69,19 +68,25 @@ const dbManager = require("./utils/databaseManager");
 const PORT = process.env.PORT || 3000;
 
 // Debug: Log startup info
-console.log('='.repeat(50));
-console.log('GenAI RDBMS Server Starting...');
-console.log('='.repeat(50));
-console.log('Database URL:', process.env.DATABASE_URL?.replace(/:[^:]*@/, ':****@'));
-console.log('JWT Secret exists:', !!process.env.JWT_SECRET);
-console.log('Gemini API Key exists:', !!process.env.GEMINI_API_KEY);
-console.log('Gemini API Key prefix:', process.env.GEMINI_API_KEY?.substring(0, 10) + '...');
-console.log('='.repeat(50));
+console.log("=".repeat(50));
+console.log("GenAI RDBMS Server Starting...");
+console.log("=".repeat(50));
+console.log(
+  "Database URL:",
+  process.env.DATABASE_URL?.replace(/:[^:]*@/, ":****@")
+);
+console.log("JWT Secret exists:", !!process.env.JWT_SECRET);
+console.log("Gemini API Key exists:", !!process.env.GEMINI_API_KEY);
+console.log(
+  "Gemini API Key prefix:",
+  process.env.GEMINI_API_KEY?.substring(0, 10) + "..."
+);
+console.log("=".repeat(50));
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`Test Gemini: http://localhost:${PORT}/api/test-gemini`);
   console.log(`List Models: http://localhost:${PORT}/api/gemini-models`);
-  console.log('='.repeat(50));
+  console.log("=".repeat(50));
 });

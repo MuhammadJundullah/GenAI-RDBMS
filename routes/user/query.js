@@ -3,9 +3,9 @@ const router = express.Router();
 const geminiService = require("../../services/geminiService");
 const dbManager = require("../../utils/databaseManager");
 const { body, validationResult } = require("express-validator");
-const Connection = require("../../models/Connection"); // Import Connection model
-const QueryHistory = require("../../models/QueryHistory"); // Import QueryHistory model
-const exportService = require("../../exports/exportService"); // Import ExportService
+const Connection = require("../../models/Connection");
+const QueryHistory = require("../../models/QueryHistory");
+const exportService = require("../../services/exportService");
 
 // Import authenticateToken middleware
 const { authenticateToken } = require("./auth");
@@ -118,6 +118,7 @@ router.post(
   async (req, res) => {
     let generatedSQL = null;
     let errorMessage = null;
+    let connectionId, question, userId;
 
     try {
       const errors = validationResult(req);
@@ -125,11 +126,14 @@ router.post(
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { connectionId, question } = req.body;
-      const userId = req.user.id;
+      ({ connectionId, question } = req.body);
+      userId = req.user.id;
 
       // Get connection from database using Connection model
-      const connection = await Connection.getConnectionById(connectionId, userId);
+      const connection = await Connection.getConnectionById(
+        connectionId,
+        userId
+      );
       if (!connection) {
         errorMessage = "Connection not found";
         return res.status(404).json({ error: errorMessage });

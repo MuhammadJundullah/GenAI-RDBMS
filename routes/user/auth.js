@@ -3,13 +3,13 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { body, validationResult } = require("express-validator");
 const router = express.Router();
-const User = require("../../models/User"); // Import the User model
-const audit = require("../../middleware/auditMiddleware"); // Import audit middleware
+const User = require("../../models/User");
+const audit = require("../../middleware/auditMiddleware");
 
 // Middleware untuk verifikasi JWT
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+  const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
     return res.status(401).json({ error: "Access token required" });
@@ -24,7 +24,7 @@ const authenticateToken = (req, res, next) => {
     if (!fullUser) {
       return res.status(404).json({ error: "User not found" });
     }
-    req.user = fullUser; // Attach full user object including role
+    req.user = fullUser;
     next();
   });
 };
@@ -58,7 +58,7 @@ router.post(
       const passwordHash = await bcrypt.hash(password, saltRounds);
 
       // Create user (default role is 'user')
-      const user = await User.create(email, passwordHash, name, 'user');
+      const user = await User.create(email, passwordHash, name, "user");
 
       // Generate JWT token
       const token = jwt.sign(
@@ -66,7 +66,7 @@ router.post(
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role, // Include role in JWT
+          role: user.role,
         },
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
@@ -92,11 +92,13 @@ router.post(
 // Login user
 router.post(
   "/login",
-  [
-    body("email").isEmail().normalizeEmail(),
-    body("password").notEmpty(),
-  ],
-  audit("login", "user", (req, res, body) => body.user ? body.user.id : null, (req) => ({ email: req.body.email })),
+  [body("email").isEmail().normalizeEmail(), body("password").notEmpty()],
+  audit(
+    "login",
+    "user",
+    (req, res, body) => (body && body.user ? body.user.id : null),
+    (req) => ({ email: req.body.email })
+  ),
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -127,7 +129,7 @@ router.post(
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role, // Include role in JWT
+          role: user.role,
         },
         process.env.JWT_SECRET,
         { expiresIn: "7d" }

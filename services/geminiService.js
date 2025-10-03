@@ -47,7 +47,7 @@ class GeminiService {
       5. Return only valid ${dbType} SQL syntax.
       6. End the query with a semicolon.
 
-      SQL QUERY:`;;
+      SQL QUERY:`;
 
       // Generate content
       const result = await model.generateContent(prompt);
@@ -241,7 +241,7 @@ class GeminiService {
     }
   }
 
-  // ✅ Method untuk test connection ke Gemini API
+  // Method untuk test connection ke Gemini API
   async testConnection() {
     try {
       const model = this.genAI.getGenerativeModel({
@@ -270,7 +270,7 @@ class GeminiService {
     }
   }
 
-  // ✅ Method untuk list available models
+  // Method untuk list available models
   async listAvailableModels() {
     try {
       const models = await this.genAI.listModels();
